@@ -26,8 +26,7 @@ using namespace llvm;
 
 /** Options **/
 static cl::OptionCategory CPP2CCategory("CPP2C options");
-static std::unique_ptr<opt::OptTable> Options(createDriverOptTable());
-static cl::opt<std::string> OutputFilename("o", cl::desc(Options->getOptionHelpText((options::OPT_o))));
+static cl::opt<std::string> OutputFilename("o", cl::desc(getDriverOptTable().getOptionHelpText((options::OPT_o))));
 
 /** Classes to be mapped to C **/
 struct OutputStreams{
@@ -296,7 +295,7 @@ public:
 	std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &CI,
 			StringRef file) override {
 
-		return llvm::make_unique<MyASTConsumer>(OS);
+		return std::make_unique<MyASTConsumer>(OS);
 	}
 
 private:

@@ -45,6 +45,7 @@ target_link_libraries(cpp2c
   clangLex
   clangBasic
   clangASTMatchers
+  LLVMFrontendOpenMP
   )
 
 target_link_libraries(cpp2c ${llvm_libs})
