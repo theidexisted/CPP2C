@@ -27,7 +27,8 @@ using namespace llvm;
 /** Options **/
 static cl::OptionCategory CPP2CCategory("CPP2C options");
 static cl::opt<std::string> OutputFilename(
-    "o", cl::desc(getDriverOptTable().getOptionHelpText((options::OPT_o))));
+    "o", cl::desc(getDriverOptTable().getOptionHelpText((options::OPT_o))),
+    cl::cat(CPP2CCategory));
 
 /** Classes to be mapped to C **/
 struct OutputStreams {
