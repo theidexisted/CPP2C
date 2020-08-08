@@ -16,7 +16,7 @@ sudo make install
 ```
 git clone https://github.com/samanbarghi/uThreads
 cd uThreads
-cpp2c include/uThreads.h -- -I./src -I/usr/include/x86_64-linux-gnu/c++/5/ -I/usr/include/c++/5.4.0 -std=c++11
+cpp2c include/uThreads.h -- -x c++ -I./src -I/usr/include/x86_64-linux-gnu/c++/5/ -I/usr/include/c++/5.4.0 -std=c++11
 ```
 
 ## Output
