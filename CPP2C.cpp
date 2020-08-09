@@ -1,16 +1,18 @@
-#include "clang/AST/AST.h"
-#include "clang/AST/ASTConsumer.h"
-#include "clang/AST/ASTContext.h"
-#include "clang/AST/RecursiveASTVisitor.h"
-#include "clang/ASTMatchers/ASTMatchFinder.h"
-#include "clang/ASTMatchers/ASTMatchers.h"
-#include "clang/Driver/Options.h"
-#include "clang/Frontend/ASTConsumers.h"
-#include "clang/Frontend/CompilerInstance.h"
-#include "clang/Frontend/FrontendActions.h"
-#include "clang/Rewrite/Core/Rewriter.h"
-#include "clang/Tooling/CommonOptionsParser.h"
-#include "clang/Tooling/Tooling.h"
+#include <clang/AST/AST.h>
+#include <clang/AST/ASTConsumer.h>
+#include <clang/AST/ASTContext.h>
+#include <clang/AST/RecursiveASTVisitor.h>
+#include <clang/ASTMatchers/ASTMatchFinder.h>
+#include <clang/ASTMatchers/ASTMatchers.h>
+#include <clang/Driver/Options.h>
+#include <clang/Frontend/ASTConsumers.h>
+#include <clang/Frontend/CompilerInstance.h>
+#include <clang/Frontend/FrontendActions.h>
+#include <clang/Rewrite/Core/Rewriter.h>
+#include <clang/Tooling/CommonOptionsParser.h>
+#include <clang/Tooling/Tooling.h>
+#include <iostream>
+#include <llvm/ADT/StringExtras.h>
 #include <map>
 #include <set>
 #include <sstream>
@@ -30,6 +32,12 @@ static cl::opt<std::string> OutputFilename(
     "o", cl::desc(getDriverOptTable().getOptionHelpText((options::OPT_o))),
     cl::cat(CPP2CCategory));
 
+static cl::opt<std::string> ClassesToGenrate(
+    "classes", cl::desc("Classes to generate C binding, split by space"),
+    cl::init("uThread kThread Cluster Connection Mutex OwnerLock "
+             "ConditionVariable Semaphore uThreadPool"),
+    cl::cat(CPP2CCategory));
+
 /** Classes to be mapped to C **/
 struct OutputStreams {
   string headerString;
@@ -41,10 +49,7 @@ struct OutputStreams {
   OutputStreams() : HeaderOS(headerString), BodyOS(bodyString){};
 };
 
-vector<string> ClassList = {"uThread",           "kThread",   "Cluster",
-                            "Connection",        "Mutex",     "OwnerLock",
-                            "ConditionVariable", "Semaphore", "uThreadPool"};
-
+llvm::SmallVector<llvm::StringRef, 16> ClassList;
 map<string, int> funcList;
 
 /** Matchers **/
@@ -211,7 +216,7 @@ public:
   MyASTConsumer(OutputStreams &os) : OS(os), HandlerForClassMatcher(os) {
     // Add a simple matcher for finding 'if' statements.
 
-    for (string &className : ClassList) {
+    for (const std::string &className : ClassList) {
       OS.HeaderOS << "struct      W" << className
                   << "; \n"
                      "typedef     struct W"
@@ -314,6 +319,7 @@ int main(int argc, const char **argv) {
   // create a new Clang Tool instance (a LibTooling environment)
   ClangTool Tool(op.getCompilations(), op.getSourcePathList());
 
+  llvm::SplitString(ClassesToGenrate, ClassList, " ");
   // run the Clang Tool, creating a new FrontendAction
   return Tool.run(newFrontendActionFactory<MyFrontendAction>().get());
 }
