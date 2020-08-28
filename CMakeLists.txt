@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 2.8.8)
 project(CPP2C)
 
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG")
 # Allow the user to override the install prefix.
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
   set(CMAKE_INSTALL_PREFIX "/usr/local")
