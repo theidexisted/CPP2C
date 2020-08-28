@@ -10,6 +10,7 @@ string(REGEX REPLACE "/$" "" CMAKE_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}")
 
 find_package(LLVM REQUIRED CONFIG)
 
+find_package(inja CONFIG REQUIRED)
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 
@@ -49,8 +50,7 @@ target_link_libraries(cpp2c
   LLVMFrontendOpenMP
   )
 
-target_link_libraries(cpp2c ${llvm_libs})
-
+target_link_libraries(cpp2c ${llvm_libs} pantor::inja)
 execute_process(COMMAND bash "-c" "llvm-config --cxxflags" OUTPUT_VARIABLE compile_flags OUTPUT_STRIP_TRAILING_WHITESPACE)
 set_property(TARGET cpp2c APPEND PROPERTY COMPILE_FLAGS "${compile_flags} -Wno-strict-aliasing")
 

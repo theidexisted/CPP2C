@@ -48,6 +48,182 @@ static cl::opt<std::string> ClassesToGenrate(
 llvm::SmallVector<llvm::StringRef, 16> ClassList;
 map<string, int> funcList;
 
+class Gen {
+  void Run() {
+    std::string fileTemplate = R"(
+class Guage {
+public:
+  enum class GuageType {
+## for e in GuageEnums 
+      {{ e }},
+## endfor 
+  };
+  const char* GetName(GuageType type);
+  const std::vector<const char*> GetLabels(GuageType type);
+private:
+  static const size_t kEnumNum = {{ GuageEnumNum }};
+  std::atomic_int_fast64_t data_[kEnumNum];
+};
+
+class Counter {
+pubilc:
+   enum class CounterType {
+## for e in CounterEnums 
+      {{ e }},
+## endfor 
+  };
+  const char* GetName(GuageType type);
+  const std::vector<const char*> GetLabels(GuageType type);
+private:
+  static const size_t kEnumNum = {{ CounterEnumNum }};
+  std::atomic_uint_fast64_t data_[kEnumNum];
+};
+
+class HistogramStat {
+public:
+  static const size_t BucketPoint[] = {
+    1, 10, 50, 100, 500, 1000, 2000, 4000, 6000, 8000, 10000, 5e4, 1e5, 5e5, 1e6, 1e7, 1e8
+  };
+  constexpr std::size_t kBucketNum = sizeof(BucketPoint) / sizeof(BucketPoint[0]);
+  std::array<std::atomic_uint_fast64_t, kBucketNum + 1> histogram_;
+};
+
+class Histogram {
+pubilc:
+   enum class HistogramType {
+## for e in HistogramEnums 
+      {{ e }},
+## endfor 
+  };
+  const char* GetName(GuageType type);
+  const std::vector<const char*> GetLabels(GuageType type);
+private:
+  static const size_t kEnumNum = {{ HistogramEnumNum }};
+  HistogramStat stat[kEnumNum];
+} 
+
+class Statistics {
+public:
+  struct ALIGNAS(CACHE_LINE_SIZE) StatisticsData {
+    Guage guage;
+    Counter counter;
+    Histogram histogram;
+    char padding_data[CACHE_LINE_SIZE -
+      ((sizeof(guage) + sizeof(counter) + sizeof(histogram)) % CACHE_LINE_SIZE)]
+
+    void *operator new(size_t s) { return cacheline_aligned_alloc(s); }
+    void *operator new[](size_t s) { return cacheline_aligned_alloc(s); }
+    void operator delete(void *p) { cacheline_aligned_free(p); }
+    void operator delete[](void *p) { cacheline_aligned_free(p); }
+  };
+  static_assert(sizeof(StatisticsData) % CACHE_LINE_SIZE == 0, "Expected " TOSTRING(CACHE_LINE_SIZE) "-byte aligned");
+
+  void SetGuage(Guage::GuageType type, int64_t value);
+  void AddGuage(Guage::GuageType type, int64_t value);
+  void RestGuage(Guage::GuageType type, int64_t value);
+
+  void AddCounter(Couter::CounterType type, int64_t value);
+  void RestCounter(Couter::CounterType type, int64_t value);
+
+  void RecordInHIstogram(Histogram::HistogramType type, int64_t value);
+
+  void Reset();
+
+private:
+  int64_t GetGuageLocked(Guage::GuageType type) const;
+  void SetGuageLocked(Guage::GuageType type, int64_t value);
+
+  uint64_t GetCounterLocked(Couter::CounterType type);
+  void SetCounterLocked(Couter::CounterType type, int64_t value);
+
+  CoreLocalArray<StatisticsData> per_core_stats_;
+  MicroSpinLock spin_lock_;
+};
+
+)";
+  };
+};
+
+class Generator {
+  public:
+    virtual void AddInclude() = 0;
+    virtual llvm::StringRef ClassName() = 0;
+    virtual std::string Template() = 0;
+    virtual void Run() = 0;
+    virtual size_t EnumNum() = 0;
+};
+
+class GuageGenerator : public Generator {
+  public:
+    virtual void AddInclude() override {
+    }
+    virtual std::string Template() override {
+      return R"(
+class Guage {
+public:
+  enum class GuageType {
+## for e in Enums 
+      {{ e }},
+## endfor 
+  };
+  void Add(GuageType type, int64_t value) {
+    GetValueRef(type) += value;
+  }
+  int64_t& GetValueRef(GuageType type) {
+    return data_[GetCoreIndex()][type];
+  }
+private:
+  static const size_t kEnumNum = {{ EnumNum }};
+  std::atomic_uint_fast64_t data_[MAXCORENUM][kEnumNum];
+};
+      )";
+    }
+/*
+    virtual llvm::StringRef ClassName() override {
+      return "Guage";
+    }
+    */
+    virtual void Run() override {
+    }
+};
+
+class CounterGenerator : public GuageGenerator {
+    virtual llvm::StringRef ClassName() override {
+      return "Counter";
+    }
+    virtual void Run() override {
+    }
+};
+
+class HistogramGenerator : public Generator {
+};
+
+class HeaderWritter {
+  public:
+    std::string CommonHeader() {
+      return R"(
+#pragma once
+#include <cstdint>
+#include <atomic>
+
+#include "core_local.h"
+#include "port_posix.h"
+#include "MicroSpinLock.h"
+
+#define MAXCORENUM 64
+#ifndef STRINGIFY
+#define STRINGIFY(x) #x
+#define TOSTRING(x) STRINGIFY(x)
+#endif
+
+
+size_t GetCoreIndex() {
+  return 0;
+}
+      )";
+    }
+};
+
 class EnumMatchHandler : public MatchFinder::MatchCallback {
 public:
   EnumMatchHandler() = default;
@@ -111,7 +287,7 @@ public:
         }
         LLVM_DEBUG(llvm::dbgs()
                    << "For enum:" << enumConstant->getQualifiedNameAsString()
-                   << ' ' << "label parsed:" << prop.ToString() << '\n');
+                   << ' ' << "label parsed result:\n" << prop.ToString() << '\n');
       }
     }
   }
