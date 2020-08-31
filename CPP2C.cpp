@@ -51,6 +51,13 @@ map<string, int> funcList;
 class Gen {
   void Run() {
     std::string fileTemplate = R"(
+// TODO: variadic tempate to avoid memory allocation
+struct Attribute {
+std::string name;
+std::string help;
+std::vector<std::string> labels;
+};
+
 class Guage {
 public:
   enum class GuageType {
@@ -81,9 +88,18 @@ private:
 
 class HistogramStat {
 public:
+  //TODO
   static const size_t BucketPoint[] = {
     1, 10, 50, 100, 500, 1000, 2000, 4000, 6000, 8000, 10000, 5e4, 1e5, 5e5, 1e6, 1e7, 1e8
   };
+  void Add(uint64_t value) {
+    auto it = std::lower_bound(std::begin(BucketPoint), std::end(BucketPoint), value);
+    if (it == std::end(BucketPoint)) --it;
+    *it ++;
+  }
+  void Reset() {
+    std::fill(histogram_.begin(), histogram_.end(), 0);
+  }
   constexpr std::size_t kBucketNum = sizeof(BucketPoint) / sizeof(BucketPoint[0]);
   std::array<std::atomic_uint_fast64_t, kBucketNum + 1> histogram_;
 };
@@ -95,8 +111,12 @@ pubilc:
       {{ e }},
 ## endfor 
   };
-  const char* GetName(GuageType type);
-  const std::vector<const char*> GetLabels(GuageType type);
+  void Add(size_t type, uint64_t value) {
+    stat[type].Add(value);
+  }
+  const char* GetName(HistogramType type) {
+  }
+  const std::vector<const char*> GetLabels(HistogramType type);
 private:
   static const size_t kEnumNum = {{ HistogramEnumNum }};
   HistogramStat stat[kEnumNum];
@@ -118,26 +138,100 @@ public:
   };
   static_assert(sizeof(StatisticsData) % CACHE_LINE_SIZE == 0, "Expected " TOSTRING(CACHE_LINE_SIZE) "-byte aligned");
 
-  void SetGuage(Guage::GuageType type, int64_t value);
-  void AddGuage(Guage::GuageType type, int64_t value);
-  void RestGuage(Guage::GuageType type, int64_t value);
+  void SetGuage(Guage::GuageType type, int64_t value) {
+    std::lock_guard<std::mutex> lock(mut_);
+    SetGuageLocked(static_cast<size_t>(type), value);
+  }
+  void AddGuage(Guage::GuageType type, int64_t value) {
+    per_core_stats_.Access()->guage[static_cast<size_t>(type)].fetch_add(
+        value, std::memory_order_relaxed);
+  }
+  void RestGuage(Guage::GuageType type) {
+    SetGuard(static_cast<size_t>(type), 0);
+  }
+  int64_t GetGuage(Guage::GuageType type) {
+    std::lock_guard<std::mutex> lock(mut_);
+    return GetGuageLocked(static_cast<size_t>(type));
+  }
 
-  void AddCounter(Couter::CounterType type, int64_t value);
-  void RestCounter(Couter::CounterType type, int64_t value);
+  void AddCounter(Couter::CounterType type, uint64_t value) {
+    per_core_stats_.Access()->counter[static_cast<size_t>(type)].fetch_add(
+        value, std::memory_order_relaxed);
+  }
+  void RestCounter(Couter::CounterType type) {
+    std::lock_guard<std::mutex> lock(mut_);
+    SetCounterLocked(static_cast<size_t>(type), 0);
+  }
+  uint64_t GetCounter(Couter::CounterType type) {
+    std::lock_guard<std::mutex> lock(mut_);
+    return GetCounterLocked(static_cast<size_t>(type));
+  }
 
-  void RecordInHIstogram(Histogram::HistogramType type, int64_t value);
+  void RecordInHistogram(Histogram::HistogramType type, int64_t value) {
+    per_core_stats_.Access()->histogram.Add(static_cast<size_t>(type), value);
+  }
 
-  void Reset();
+  void Reset() {
+    std::lock_guard<std::mutex> lock(mut_);
+    ResetLocked();
+  }
+
+  std::string ToString() {
+  }
+
+  void ToString(char* buf, size_t len);
 
 private:
-  int64_t GetGuageLocked(Guage::GuageType type) const;
-  void SetGuageLocked(Guage::GuageType type, int64_t value);
+  // TODO, add GUARDED_BY
+  int64_t GetGuageLocked(size_t type) const {
+    int64_t res = 0;
+    for (size_t i = 0; i < per_core_stats_.size(); ++i) {
+      res += per_core_stats_.AccessAtCore(i)->guage.data_[type];
+    }
+    return res;
+  }
+  void SetGuageLocked(size_t type, int64_t value) {
+    per_core_stats_.AccessAtCore(0)->guage.data_[type] = value;
+    for (size_t i = 1; i < per_core_stats_.size(); ++i) {
+      per_core_stats_.AccessAtCore(i)->guage.data_[type] = 0;
+    }
+  }
+  uint64_t GetCounterLocked(size_t type) {
+    uint64_t res = 0;
+    for (size_t i = 0; i < per_core_stats_.size(); ++i) {
+      res += per_core_stats_.AccessAtCore(i)->counter.data_[type];
+    }
+    return res;
+  }
+  void SetCounterLocked(size_t type, int64_t value) {
+    per_core_stats_.AccessAtCore(0)->couter.data_[static_cast<size_t>(type)] = value;
+    for (size_t i = 1; i < per_core_stats_.size(); ++i) {
+      per_core_stats_.AccessAtCore(i)->counter.data_[static_cast<size_t>(type)] = 0;
+    }
+  }
+  void ResetHistogramLocked(size_t type) {
+    for (size_t i = 0; i < per_core_stats_.size(); ++i) {
+      per_core_stats_.AccessAtCore(i)->histogram.stat[type].Reset();
+    }
+  }
 
-  uint64_t GetCounterLocked(Couter::CounterType type);
-  void SetCounterLocked(Couter::CounterType type, int64_t value);
+  void ResetLocked() {
+    for (size_t i = 0; i < Guage::kEnumNum; ++i) {
+      SetGuageLocked(i, 0);
+    }
+    for (size_t i = 0;i < Counter::kNumNum; ++i) {
+      SetCounterLocked(i, 0);
+    }
+    for (size_t i = 0;i < Histogram::kEnumNum; ++i) {
+      ResetHistogramLocked(i, 0);
+    }
+  }
+
+  std::unique_ptr<HistogramStat> getHistogramStatLocked(
+    Histogram::HistogramType type) const;
 
   CoreLocalArray<StatisticsData> per_core_stats_;
-  MicroSpinLock spin_lock_;
+  std::mutex mut_;
 };
 
 )";
@@ -205,10 +299,11 @@ class HeaderWritter {
 #pragma once
 #include <cstdint>
 #include <atomic>
+#include <mutex>
 
 #include "core_local.h"
 #include "port_posix.h"
-#include "MicroSpinLock.h"
+//#include "MicroSpinLock.h"
 
 #define MAXCORENUM 64
 #ifndef STRINGIFY
