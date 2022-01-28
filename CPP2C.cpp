@@ -337,7 +337,8 @@ class MyFrontendAction : public ASTFrontendAction {
 
 int main(int argc, const char **argv) {
   // parse the command-line args passed to your code
-  auto op = CommonOptionsParser::create(argc, argv, CPP2CCategory);
+  auto op = CommonOptionsParser::create(argc, argv, CPP2CCategory,
+                                        llvm::cl::OneOrMore);
   assert(op);
   // create a new Clang Tool instance (a LibTooling environment)
   ClangTool Tool(op.get().getCompilations(), op.get().getSourcePathList());
