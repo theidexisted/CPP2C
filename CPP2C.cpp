@@ -11,8 +11,9 @@
 #include <clang/Rewrite/Core/Rewriter.h>
 #include <clang/Tooling/CommonOptionsParser.h>
 #include <clang/Tooling/Tooling.h>
-#include <iostream>
 #include <llvm/ADT/StringExtras.h>
+
+#include <iostream>
 #include <map>
 #include <set>
 #include <sstream>
@@ -56,13 +57,12 @@ map<string, int> funcList;
 
 /** Handlers **/
 class classMatchHandler : public MatchFinder::MatchCallback {
-public:
+ public:
   classMatchHandler(OutputStreams &os) : OS(os) {}
 
   tuple<string, string, bool, bool> determineCType(const QualType &qt) {
-
     string CType;
-    string CastType; // whether this should be casted or not
+    string CastType;  // whether this should be casted or not
     bool isPointer = false;
     bool shoulReturn = true;
 
@@ -70,8 +70,7 @@ public:
     if (qt->isBuiltinType() ||
         (qt->isPointerType() && qt->getPointeeType()->isBuiltinType())) {
       CType = qt.getAsString();
-      if (qt->isVoidType())
-        shoulReturn = false;
+      if (qt->isVoidType()) shoulReturn = false;
       // if it is a CXXrecordDecl then return a pointer to WName*
     } else if (qt->isRecordType()) {
       const CXXRecordDecl *crd = qt->getAsCXXRecordDecl();
@@ -81,7 +80,7 @@ public:
 
     } else if ((qt->isReferenceType() || qt->isPointerType()) &&
                qt->getPointeeType()->isRecordType()) {
-      isPointer = true; // to properly differentiate among cast types
+      isPointer = true;  // to properly differentiate among cast types
       const CXXRecordDecl *crd = qt->getPointeeType()->getAsCXXRecordDecl();
       string recordName = crd->getNameAsString();
       if (std::find(ClassList.begin(), ClassList.end(), recordName) !=
@@ -110,13 +109,11 @@ public:
       std::stringstream functionBody;
 
       // ignore operator overloadings
-      if (cmd->isOverloadedOperator())
-        return;
+      if (cmd->isOverloadedOperator()) return;
 
       // constructor
       if (const CXXConstructorDecl *ccd = dyn_cast<CXXConstructorDecl>(cmd)) {
-        if (ccd->isCopyConstructor() || ccd->isMoveConstructor())
-          return;
+        if (ccd->isCopyConstructor() || ccd->isMoveConstructor()) return;
         methodName = "_create";
         returnType = "W" + className + "*";
         self = "";
@@ -135,13 +132,11 @@ public:
             determineCType(qt);
 
         // should this function return?
-        if (shouldReturn)
-          functionBody << "return ";
+        if (shouldReturn) functionBody << "return ";
 
         if (returnCast != "") {
           // if not pointer and it needs to be casted, then return the pointer
-          if (!isPointer)
-            functionBody << "&";
+          if (!isPointer) functionBody << "&";
           functionBody << "reinterpret_cast<" << returnType << ">(";
           bodyEnd += ")";
         }
@@ -178,13 +173,11 @@ public:
         funcname << separator << returnType << " ";
         funcname << cmd->parameters()[i]->getQualifiedNameAsString() << "";
 
-        if (i != 0)
-          functionBody << separator;
+        if (i != 0) functionBody << separator;
         if (returnCast == "")
           functionBody << cmd->parameters()[i]->getQualifiedNameAsString();
         else {
-          if (!isPointer)
-            functionBody << "*";
+          if (!isPointer) functionBody << "*";
           functionBody << "reinterpret_cast<" << returnCast << ">("
                        << cmd->parameters()[i]->getQualifiedNameAsString()
                        << ")";
@@ -203,7 +196,7 @@ public:
   }
   virtual void onEndOfTranslationUnit() {}
 
-private:
+ private:
   OutputStreams &OS;
 };
 
@@ -212,11 +205,11 @@ private:
 // by the Clang parser. It registers a couple of matchers and runs them on
 // the AST.
 class MyASTConsumer : public ASTConsumer {
-public:
+ public:
   MyASTConsumer(OutputStreams &os) : OS(os), HandlerForClassMatcher(os) {
     // Add a simple matcher for finding 'if' statements.
 
-    for (const std::string &className : ClassList) {
+    for (const auto &className : ClassList) {
       OS.HeaderOS << "struct      W" << className
                   << "; \n"
                      "typedef     struct W"
@@ -235,7 +228,7 @@ public:
     Matcher.matchAST(Context);
   }
 
-private:
+ private:
   OutputStreams &OS;
   classMatchHandler HandlerForClassMatcher;
 
@@ -244,7 +237,7 @@ private:
 
 // For each source file provided to the tool, a new FrontendAction is created.
 class MyFrontendAction : public ASTFrontendAction {
-public:
+ public:
   MyFrontendAction() {
     OS.HeaderOS << "#ifndef UTHREADS_CWRAPPER_H\n"
                    "#define UTHREADS_CWRAPPER_H_\n"
@@ -269,19 +262,18 @@ public:
   }
 
   void EndSourceFileAction() override {
-
     StringRef headerFile("cwrapper.h");
     StringRef bodyFile("cwrapper.cpp");
 
     // Open the output file
     std::error_code EC;
-    llvm::raw_fd_ostream HOS(headerFile, EC, llvm::sys::fs::F_None);
+    llvm::raw_fd_ostream HOS(headerFile, EC, llvm::sys::fs::OF_None);
     if (EC) {
       llvm::errs() << "while opening '" << headerFile << "': " << EC.message()
                    << '\n';
       exit(1);
     }
-    llvm::raw_fd_ostream BOS(bodyFile, EC, llvm::sys::fs::F_None);
+    llvm::raw_fd_ostream BOS(bodyFile, EC, llvm::sys::fs::OF_None);
     if (EC) {
       llvm::errs() << "while opening '" << bodyFile << "': " << EC.message()
                    << '\n';
@@ -305,19 +297,19 @@ public:
 
   std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &CI,
                                                  StringRef file) override {
-
     return std::make_unique<MyASTConsumer>(OS);
   }
 
-private:
+ private:
   OutputStreams OS;
 };
 
 int main(int argc, const char **argv) {
   // parse the command-line args passed to your code
-  CommonOptionsParser op(argc, argv, CPP2CCategory);
+  auto op = CommonOptionsParser::create(argc, argv, CPP2CCategory);
+  assert(op);
   // create a new Clang Tool instance (a LibTooling environment)
-  ClangTool Tool(op.getCompilations(), op.getSourcePathList());
+  ClangTool Tool(op.get().getCompilations(), op.get().getSourcePathList());
 
   llvm::SplitString(ClassesToGenrate, ClassList, " ");
   // run the Clang Tool, creating a new FrontendAction
