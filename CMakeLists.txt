@@ -7,6 +7,8 @@ if(NOT DEFINED CMAKE_INSTALL_PREFIX)
 endif()
 string(REGEX REPLACE "/$" "" CMAKE_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}")
 
+#add_definitions("-no-pie -fno-PIE")
+add_definitions("-no-pie")
 find_package(LLVM REQUIRED CONFIG)
 
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")

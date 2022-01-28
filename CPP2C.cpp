@@ -111,6 +111,36 @@ class classMatchHandler : public MatchFinder::MatchCallback {
       // ignore operator overloadings
       if (cmd->isOverloadedOperator()) return;
 
+      std::string ret;
+
+      auto isConst = cmd->isConst();
+
+      if (cmd->isVirtual()) {
+        auto methodName = cmd->getNameAsString();
+
+        const QualType qt = cmd->getReturnType();
+        std::tie(returnType, returnCast, isPointer, shouldReturn) =
+            determineCType(qt);
+
+        ret.append("MOCK_METHOD(");
+        ret.append(methodName);
+        ret.append(",");
+        ret.append(returnType);
+        ret.append("(");
+
+        auto n = cmd->getNumParams();
+        if (n) {
+          for (unsigned int i = 0; i < n; i++) {
+            ret.append(cmd->parameters()[i]->getQualifiedNameAsString());
+            if (i != n - 1) ret.append(",");
+          }
+        }
+        ret.append(")");
+
+        std::cout << ret << std::endl;
+      }
+
+      /*
       // constructor
       if (const CXXConstructorDecl *ccd = dyn_cast<CXXConstructorDecl>(cmd)) {
         if (ccd->isCopyConstructor() || ccd->isMoveConstructor()) return;
@@ -166,20 +196,20 @@ class classMatchHandler : public MatchFinder::MatchCallback {
 
       funcname << "(" << self;
 
-      for (unsigned int i = 0; i < cmd->getNumParams(); i++) {
-        const QualType qt = cmd->parameters()[i]->getType();
-        std::tie(returnType, returnCast, isPointer, shouldReturn) =
-            determineCType(qt);
-        funcname << separator << returnType << " ";
-        funcname << cmd->parameters()[i]->getQualifiedNameAsString() << "";
+      for (unsigned int i = 0; i < cmd->getnumparams(); i++) {
+        const qualtype qt = cmd->parameters()[i]->gettype();
+        std::tie(returntype, returncast, ispointer, shouldreturn) =
+            determinectype(qt);
+        funcname << separator << returntype << " ";
+        funcname << cmd->parameters()[i]->getqualifiednameasstring() << "";
 
-        if (i != 0) functionBody << separator;
-        if (returnCast == "")
-          functionBody << cmd->parameters()[i]->getQualifiedNameAsString();
+        if (i != 0) functionbody << separator;
+        if (returncast == "")
+          functionbody << cmd->parameters()[i]->getqualifiednameasstring();
         else {
-          if (!isPointer) functionBody << "*";
-          functionBody << "reinterpret_cast<" << returnCast << ">("
-                       << cmd->parameters()[i]->getQualifiedNameAsString()
+          if (!ispointer) functionbody << "*";
+          functionbody << "reinterpret_cast<" << returncast << ">("
+                       << cmd->parameters()[i]->getqualifiednameasstring()
                        << ")";
         }
 
@@ -192,6 +222,7 @@ class classMatchHandler : public MatchFinder::MatchCallback {
       OS.BodyOS << funcname.str() << "{\n    ";
       OS.BodyOS << functionBody.str();
       OS.BodyOS << bodyEnd << "; \n}\n";
+      */
     }
   }
   virtual void onEndOfTranslationUnit() {}
